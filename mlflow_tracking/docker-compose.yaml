@@ -1,0 +1,73 @@
+services:
+  waitfordb:
+    image: dadarek/wait-for-dependencies
+    depends_on:
+      - tracking-db
+    restart: always
+    command: tracking-db:5432
+
+  tracking-db:
+    image: postgres:13.3
+    container_name: ${DB_HOST}
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      TZ: "Asia/Tokyo"
+    ports:
+      - 5432:5432
+    volumes:
+      - db_volume:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: always
+    ports:
+      - 8002:80
+    volumes:
+      - pgadmin4_volume:/var/lib/pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    depends_on:
+      - tracking-db
+
+  tracking-server:
+    container_name: mlflow-tracking
+    build:
+      context: ./tracking_server
+      dockerfile: Dockerfile
+      args:
+        - POSTGRES_USER=${POSTGRES_USER}
+        - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+        - DB_HOST=${DB_HOST}
+        - DB_NAME=${DB_NAME}
+        - DEFAULT_ARTIFACT_ROOT=ftp://${FTP_USER_NAME}:${FTP_USER_PASS}@${HOST_IP}/artifact_location
+    image: mlflow-tracking
+    restart: always
+    ports:
+      - "5000:5000"
+    depends_on:
+      - tracking-db
+
+  ftp-server:
+    image: stilliard/pure-ftpd:latest
+    container_name: ftp-server
+    ports:
+      - "21:21"
+      - "30000-30009:30000-30009"
+    volumes:
+      - artifact_volume:/home/ftpusers
+    environment:
+      - PUBLICHOST=localhost
+      - FTP_USER_NAME=${FTP_USER_NAME}
+      - FTP_USER_PASS=${FTP_USER_PASS}
+      - FTP_USER_HOME=/home/ftpusers
+      - ADDED_FLAGS="--tls=2"
+    restart: always
+
+volumes:
+  db_volume:
+  pgadmin4_volume:
+  artifact_volume:
